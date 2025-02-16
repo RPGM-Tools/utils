@@ -1,0 +1,13 @@
+{
+  "name": "utils",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "license": "MIT",
+	"author": "dallenb4",
+  "description": "Shared functionality for all RPGM frontends",
+  "dependencies": {
+    "@types/three": "^0.173.0",
+    "gsap": "^3.12.7",
+    "three": "^0.173.0"
+  }
+}
