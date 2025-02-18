@@ -1,5 +1,8 @@
 import gsap from 'gsap'
 import * as THREE from 'three'
+import LoadCubemap from '../assets/CubeMap.ts'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { EmeraldTexture, RubyTexture } from '../assets/DiceTextures.ts'
 
 const IDLE_ROTATE_SPEED = 0.005
 const DRAG_ROTATE_SPEED = 0.04
@@ -11,27 +14,31 @@ const SCALE = 0.4
 export class DiceGrid {
 	private dices: DiceCrystal[] = []
 	public scene: THREE.Scene
-	public camera: THREE.OrthographicCamera
+	public camera: THREE.PerspectiveCamera
 	private renderer: THREE.WebGLRenderer
 	public canvas: HTMLCanvasElement
 
 	constructor(canvas: HTMLCanvasElement, diceGrid: HTMLElement) {
 		this.scene = new THREE.Scene()
-		this.camera = new THREE.OrthographicCamera(0, 0, 0, 0)
-		this.camera.position.z = 500
+		this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000)
+		// this.camera = new THREE.OrthographicCamera(0, 0, 0, 0)
+		this.camera.position.z = 10
 		this.canvas = canvas
 		this.renderer = new THREE.WebGLRenderer(
 			{ canvas: this.canvas, alpha: true, antialias: true }
 		)
 
+		const controls = new OrbitControls(this.camera, canvas)
+
 		new ResizeObserver(() => {
 			const width = diceGrid.clientWidth
 			const height = diceGrid.clientHeight
 			this.renderer.setSize(width, height)
-			this.camera.left = -width / 2
-			this.camera.right = width / 2
-			this.camera.top = height / 2
-			this.camera.bottom = -height / 2
+			this.camera.aspect = width / height
+			// this.camera.left = -width / 2
+			// this.camera.right = width / 2
+			// this.camera.top = height / 2
+			// this.camera.bottom = -height / 2
 			this.camera.updateProjectionMatrix()
 
 			// Update all dice when grid changes
@@ -39,7 +46,7 @@ export class DiceGrid {
 			this.renderLoop(true)
 		}).observe(diceGrid)
 
-		const ambientLight = new THREE.AmbientLight(0xffffff, 0.1)
+		const ambientLight = new THREE.AmbientLight(0xffffff, 1.0)
 		this.scene.add(ambientLight)
 
 		const directionalLight = new THREE.DirectionalLight(0xffffff)
@@ -57,7 +64,7 @@ export class DiceGrid {
 	}
 
 	public addDice(parent: HTMLDivElement, geometry: THREE.BufferGeometry): DiceCrystal {
-		const newDice = new DiceCrystal(this, parent, geometry)
+		const newDice = new DiceCrystal(this, parent, geometry, EmeraldTexture)
 		this.dices.push(newDice)
 		return newDice
 	}
@@ -80,15 +87,22 @@ export class DiceCrystal {
 	public mesh: THREE.Mesh
 	public position = new THREE.Vector3
 	private _position = new THREE.Vector3
-	public scale = new THREE.Vector3
-	private _scale = new THREE.Vector3
+	public scale = new THREE.Vector3(1, 1, 1)
+	private _scale = new THREE.Vector3(1, 1, 1)
 
-	public constructor(parentGrid: DiceGrid, diceDiv: HTMLDivElement, geometry: THREE.BufferGeometry) {
+	public constructor(parentGrid: DiceGrid, diceDiv: HTMLDivElement, geometry: THREE.BufferGeometry, texture: THREE.Texture) {
 		this.parentGrid = parentGrid
 		this.diceDiv = diceDiv
-		this.mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial(
-			{ color: 0x00ffcc, transparent: true, opacity: 1.0 }
-		))
+		this.mesh = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial({
+			color: 0xffffff,
+			map: texture,
+			transparent: true,
+			opacity: 0.75,
+			side: THREE.DoubleSide,
+			refractionRatio: 0.5,
+			reflectivity: 0.4,
+			envMap: LoadCubemap()
+		}))
 		this.mesh.rotation.reorder("ZXY")
 		this.parentGrid.scene.add(this.mesh)
 		this.mesh.rotation.set(0.1, 0, 0.3)
@@ -104,20 +118,21 @@ export class DiceCrystal {
 
 	// Convert div position to accurate Three.js world coordinates
 	public updateTransform() {
+		const sc = 200
 		const rect = this.diceDiv.getBoundingClientRect()
 		const gridRect = this.parentGrid.canvas.getBoundingClientRect()
 
 		// Convert div position to NDC (-1 to 1 range)
-		const xNDC = ((rect.left + rect.width / 2) - gridRect.left) / gridRect.width * 2 - 1
-		const yNDC = -(((rect.top + rect.height / 2) - gridRect.top) / gridRect.height * 2 - 1)
+		const xNDC = ((rect.left + rect.width / 2) - gridRect.left) / gridRect.width * sc - 1
+		const yNDC = -(((rect.top + rect.height / 2) - gridRect.top) / gridRect.height * sc - 1)
 
 		// Convert to world space for the orthographic camera
 		const worldPosition = new THREE.Vector3(xNDC, yNDC, 0)
 		worldPosition.unproject(this.parentGrid.camera)
 
-		// Scale the dice to match the div size
-		const scaleFactor = (rect.width) * SCALE
-		this._scale.set(scaleFactor, scaleFactor, scaleFactor)
+		// // Scale the dice to match the div size
+		// const scaleFactor = (rect.width) * SCALE
+		// this._scale.set(scaleFactor, scaleFactor, scaleFactor)
 
 		// Move the dice mesh to the corresponding world position
 		this._position.set(worldPosition.x, worldPosition.y, this._position.z)
@@ -128,7 +143,7 @@ export class DiceCrystal {
 		this.mesh.scale.multiplyVectors(this._scale, this.scale)
 		this.mesh.position.addVectors(this._position, this.position)
 		// Prevent clipping by moving selected dice forward
-		this._position.z = this.isHovered || this.isDragged ? 400 : 0
+		// this._position.z = this.isHovered || this.isDragged ? 400 : 0
 	}
 
 	public setState(newState: DiceState) {
